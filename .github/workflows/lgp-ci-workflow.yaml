@@ -3,47 +3,137 @@ name: CI Pipeline
 on:
   push:
     branches: [main]
-    tags: ['*']
+    tags: ["*"]
   pull_request:
     branches: [main]
   workflow_dispatch:
 
 env:
-  DOCKER_CONTAINER_NAME: andrianovartemii/lgp-ci-utils
-  DOCKER_CONTAINER_TAG: latest
-  TEST_DIR_UTILS: .ci_utils
-  UTILS_REPO_URL: lets-go-programming-contest/lets-go-programming-ci-utils
-  TEST_DIR_COMMON: .ci_common
-  COMMON_REPO_URL: lets-go-programming-contest/lets-go-programming-ci-common
+  COMMON_DIR: ".ci_common"
+  COMMON_REPO_URL: "lets-go-programming-contest/lets-go-programming-ci-common"
+  BASE_REV: "origin/main"
+  TARGET_REV: "HEAD"
 
 jobs:
   sanity:
     runs-on: ubuntu-latest
+    container: "andrianovartemii/lgp-ci-utils:latest"
+    outputs:
+      student: ${{ steps.student.outputs.STUDENT_NAME }}
+      task: ${{ steps.task.outputs.TASK_NAME }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with: 
+          fetch-depth: 0
+      - name: Prepare environment
+        uses: ./.github/actions/prepare
+      - name: Validate files
+        run: | 
+          lgp-validator sanity files \
+          --base="${{ env.BASE_REV }}" \
+          --target="${{ env.TARGET_REV }}"
+      - name: Validate students
+        id: student
+        run: |
+          lgp-validator sanity students \
+          --base="${{ env.BASE_REV }}" \
+          --target="${{ env.TARGET_REV }}" \
+          --to-env-file="${GITHUB_OUTPUT}"
+      - name: Validate tasks
+        id: task
+        run: |
+          lgp-validator sanity tasks \
+          --base=${{ env.BASE_REV }} \
+          --target=${{ env.TARGET_REV }} \
+          --to-env-file="${GITHUB_OUTPUT}"
 
-      - name: Checkout utils files
+  build:
+    runs-on: ubuntu-latest
+    container: "andrianovartemii/lgp-ci-utils:latest"
+    needs: 
+      - sanity
+    steps:
+      - name: Checkout code
         uses: actions/checkout@v4
+        with: 
+          fetch-depth: 0
+      - name: Prepare environment
+        uses: ./.github/actions/prepare
+      - name: Export env variables
+        run: |
+          echo "BUILD_BIN=${GITHUB_WORKSPACE}/bin" >> $GITHUB_ENV
+          echo "SOURCE_DIR=${GITHUB_WORKSPACE}/${{ needs.sanity.outputs.student }}/${{ needs.sanity.outputs.task }}" >> $GITHUB_ENV
+          echo "STATIC_DIR=${{ env.COMMON_DIR }}/${{ needs.sanity.outputs.task }}" >> $GITHUB_ENV
+      - name: Build go services
+        run: |
+          lgp-validator module build \
+          --output bin \
+          --config="${{ env.COMMON_DIR }}/${{ needs.sanity.outputs.task }}/config.yaml" \
+          --student="${{ needs.sanity.outputs.student }}" \
+          --task="${{ needs.sanity.outputs.task }}"
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
         with:
-          repository:  ${{ env.UTILS_REPO_URL }}
-          path: ${{ env.TEST_DIR_UTILS }}
+          name: build-artifacts
+          path: bin
 
-      - name: Checkout common files
+  lint:
+    runs-on: ubuntu-latest
+    container: "andrianovartemii/lgp-ci-utils:latest"
+    needs: 
+      - sanity
+      - build
+    steps:
+      - name: Checkout code
         uses: actions/checkout@v4
+      - name: Prepare environment
+        uses: ./.github/actions/prepare
+      - name: Export env variables
+        run: |
+          echo "BUILD_BIN=${GITHUB_WORKSPACE}/bin" >> $GITHUB_ENV
+          echo "SOURCE_DIR=${GITHUB_WORKSPACE}/${{ needs.sanity.outputs.student }}/${{ needs.sanity.outputs.task }}" >> $GITHUB_ENV
+          echo "STATIC_DIR=${{ env.COMMON_DIR }}/${{ needs.sanity.outputs.task }}" >> $GITHUB_ENV
+      - name: Lint go code
+        run: |
+          lgp-validator module lint \
+          --config="${{ env.COMMON_DIR }}/${{ needs.sanity.outputs.task }}/config.yaml" \
+          --student="${{ needs.sanity.outputs.student }}" \
+          --task="${{ needs.sanity.outputs.task }}"
+  test:
+    runs-on: ubuntu-latest
+    container: "andrianovartemii/lgp-ci-utils:latest"
+    needs: 
+      - sanity
+      - build
+      - sanity
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Prepare environment
+        uses: ./.github/actions/prepare
+      - name: Download artifacts from build job
+        uses: actions/download-artifact@v4
         with:
-          repository:  ${{ env.COMMON_REPO_URL }}
-          path: ${{ env.TEST_DIR_COMMON }}
-
-      - name: "Pull enviroment container"
-        run: docker pull ${DOCKER_CONTAINER_NAME}:${DOCKER_CONTAINER_TAG}
-
-      - name: "Validate files"
-        run: make -f ${TEST_DIR_UTILS}/Makefile docker-sanity-files
-
-      - name: "Valide student"
-        run: make -f ${TEST_DIR_UTILS}/Makefile docker-sanity-student
-
-      - name: "Valide tasks"
-        run: make -f ${TEST_DIR_UTILS}/Makefile docker-sanity-tasks
-
+          name: build-artifacts
+          path: bin
+      - name: Make bin executable
+        run: chmod +x bin/*
+      - name: Export env variables
+        run: |
+          echo "BUILD_BIN=${GITHUB_WORKSPACE}/bin" >> $GITHUB_ENV
+          echo "SOURCE_DIR=${GITHUB_WORKSPACE}/${{ needs.sanity.outputs.student }}/${{ needs.sanity.outputs.task }}" >> $GITHUB_ENV
+          echo "STATIC_DIR=${{ env.COMMON_DIR }}/${{ needs.sanity.outputs.task }}" >> $GITHUB_ENV
+      - name: Export env variables
+        run: |
+          echo $BUILD_BIN
+          echo $SOURCE_DIR
+          echo #STATIC_DIR
+      - name: Ls -la 
+        run: ls -la && ls -la bin && id
+      - name: Run tests with build artifacts
+        run: |
+          lgp-validator module test \
+          --config="${{ env.COMMON_DIR }}/${{ needs.sanity.outputs.task }}/config.yaml" \
+          --student="${{ needs.sanity.outputs.student }}" \
+          --task="${{ needs.sanity.outputs.task }}"
