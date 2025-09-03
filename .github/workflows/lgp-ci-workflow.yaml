@@ -9,23 +9,41 @@ on:
   workflow_dispatch:
 
 env:
-  COMMON_REPO_URL: https://github.com/lets-go-programming-contest/lets-go-programming-ci-common.git
+  DOCKER_CONTAINER_NAME: andrianovartemii/lgp-ci-utils
+  DOCKER_CONTAINER_TAG: latest
+  TEST_DIR_UTILS: .ci_utils
+  UTILS_REPO_URL: lets-go-programming-contest/lets-go-programming-ci-utils
+  TEST_DIR_COMMON: .ci_common
+  COMMON_REPO_URL: lets-go-programming-contest/lets-go-programming-ci-common
 
 jobs:
-  sanity-files:
+  sanity:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Clone utils repo
+      - name: Checkout utils files
         uses: actions/checkout@v4
         with:
-          repository: "lets-go-programming-contest/lets-go-programming-ci-utils"
-          path: ".ci_utils"
-      
-      - name: "ls la"
-        run: ls -la .ci_utils
+          repository:  ${{ env.UTILS_REPO_URL }}
+          path: ${{ env.TEST_DIR_UTILS }}
 
-      - name: Run sanity files checks
-        run: make -f .ci_utils/Makefile docker-sanity-student
+      - name: Checkout common files
+        uses: actions/checkout@v4
+        with:
+          repository:  ${{ env.COMMON_REPO_URL }}
+          path: ${{ env.TEST_DIR_COMMON }}
+
+      - name: "Pull enviroment container"
+        run: docker pull ${DOCKER_CONTAINER_NAME}:${DOCKER_CONTAINER_TAG}
+
+      - name: "Validate files"
+        run: make -f ${TEST_DIR_UTILS}/Makefile docker-sanity-files
+
+      - name: "Valide student"
+        run: make -f ${TEST_DIR_UTILS}/Makefile docker-sanity-student
+
+      - name: "Valide tasks"
+        run: make -f ${TEST_DIR_UTILS}/Makefile docker-sanity-tasks
+
