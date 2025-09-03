@@ -1,0 +1,8 @@
+.ci_utils
+.ci_common
+.lgp_cache
+
+.idea
+.vscode
+
+bin

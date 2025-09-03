@@ -1,0 +1,16 @@
+name: Run Makefile Target Action
+
+on:
+  workflow_call:
+    inputs:
+      target:
+        description: Make target to run
+        required: true
+        type: string
+
+runs:
+    using: composite
+    steps:
+      - name: "Run make target"
+        shell: bash
+        run: make -f ${TEST_DIR_UTILS}/Makefile ${{ inputs.target }}

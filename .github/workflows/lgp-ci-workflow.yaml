@@ -3,7 +3,7 @@ name: CI Pipeline
 on:
   push:
     branches: [main]
-    tags: ['*']
+    tags: ["*"]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -11,39 +11,96 @@ on:
 env:
   DOCKER_CONTAINER_NAME: andrianovartemii/lgp-ci-utils
   DOCKER_CONTAINER_TAG: latest
-  TEST_DIR_UTILS: .ci_utils
+  TEST_DIR_UTILS: ${{ github.workspace }}/.ci_utils
   UTILS_REPO_URL: lets-go-programming-contest/lets-go-programming-ci-utils
-  TEST_DIR_COMMON: .ci_common
+  TEST_DIR_COMMON: ${{ github.workspace }}/.ci_common
   COMMON_REPO_URL: lets-go-programming-contest/lets-go-programming-ci-common
+  DOCKER_WORKDIR: ${{ github.workspace }}
+  HOST_CACHE: /tmp/.glp_cache
 
 jobs:
-  sanity:
+  some:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Checkout utils files
-        uses: actions/checkout@v4
-        with:
-          repository:  ${{ env.UTILS_REPO_URL }}
-          path: ${{ env.TEST_DIR_UTILS }}
-
-      - name: Checkout common files
-        uses: actions/checkout@v4
-        with:
-          repository:  ${{ env.COMMON_REPO_URL }}
-          path: ${{ env.TEST_DIR_COMMON }}
-
-      - name: "Pull enviroment container"
-        run: docker pull ${DOCKER_CONTAINER_NAME}:${DOCKER_CONTAINER_TAG}
-
-      - name: "Validate files"
-        run: make -f ${TEST_DIR_UTILS}/Makefile docker-sanity-files
-
-      - name: "Valide student"
-        run: make -f ${TEST_DIR_UTILS}/Makefile docker-sanity-student
-
-      - name: "Valide tasks"
-        run: make -f ${TEST_DIR_UTILS}/Makefile docker-sanity-tasks
-
+      - name: test
+        run: echo ${GITHUB_OUTPUT}
+  # sanity:
+  #   runs-on: ubuntu-latest
+  #   outputs:
+  #     student: ${{ steps.student.outputs.student }}
+  #     task: ${{ steps.task.outputs.task }}
+  #   steps:
+  #     - name: Checkout code
+  #       uses: actions/checkout@v4
+  #     - name: Prepare environment
+  #       uses: ./.github/actions/prepare
+  #     - name: Validate student
+  #       uses: ./.github/actions/run-target
+  #       with:
+  #         target: docker-sanity-student
+  #     - name: Process student name
+  #       id: student
+  #       run: echo "student=user1.test" >> ${GITHUB_OUTPUT}
+  #     - name: Validate task
+  #       uses: ./.github/actions/run-target
+  #       with:
+  #         target: docker-sanity-tasks
+  #     - name: Process task number
+  #       id: task
+  #       run: echo "task=task0" >> ${GITHUB_OUTPUT}
+  #     - name: Validate task files
+  #       uses: ./.github/actions/run-target
+  #       with:
+  #         target: docker-sanity-files
+  # build:
+  #   runs-on: ubuntu-latest
+  #   needs: sanity
+  #   steps:
+  #     - name: Show student name
+  #       run: echo "student=${{ needs.sanity.outputs.student}}"
+  #     - name: Show task number
+  #       run: echo "task= ${{ needs.sanity.outputs.task }}"
+  #     - name: Checkout code
+  #       uses: actions/checkout@v4
+  #     - name: Prepare environment
+  #       uses: ./.github/actions/prepare
+  #     - name: Build go services
+  #       uses: ./.github/actions/run-target
+  #       with:
+  #         target: docker-build
+  #     - name: Upload build artifacts
+  #       uses: actions/upload-artifact@v4
+  #       with:
+  #         name: build-artifacts
+  #         path: bin
+  # lint:
+  #   runs-on: ubuntu-latest
+  #   needs: build
+  #   steps:
+  #     - name: Checkout code
+  #       uses: actions/checkout@v4
+  #     - name: Prepare environment
+  #       uses: ./.github/actions/prepare
+  #     - name: Ls common
+  #       run: ls -la ${{ env.TEST_DIR_COMMON }} && ls -la ${{ env.TEST_DIR_COMMON }}/task-0
+  #     - name: Lint go source code
+  #       uses: ./.github/actions/run-target
+  #       with:
+  #         target: docker-lint
+  # tests:
+  #   runs-on: ubuntu-latest
+  #   needs: lint
+  #   steps:
+  #     - name: Checkout code
+  #       uses: actions/checkout@v4
+  #     - name: Prepare environment
+  #       uses: ./.github/actions/prepare
+  #     - name: Download artifacts from build job
+  #       uses: actions/download-artifact@v4
+  #       with:
+  #         name: build-artifacts
+  #         path: bin
+  #     - name: Run test with using build artifact
+  #       uses: ./.github/actions/run-target
+  #       with:
+  #         target: docker-tests
